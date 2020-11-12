@@ -129,7 +129,7 @@ var dashPat = regexp.MustCompile("\\-+")
 // Seg is a segment of an example
 type Seg struct {
 	Docs, DocsRendered              string
-	Code, CodeRendered              string
+	Code, CodeRendered, CodeForJs   string
 	CodeEmpty, CodeLeading, CodeRun bool
 }
 
@@ -153,11 +153,10 @@ func resetURLHashFile(codehash, code, sourcePath string) string {
 	}
 	payload := strings.NewReader(code)
 	resp, err := http.Post("https://play.golang.org/share", "text/plain", payload)
-	if err != nil {
-		panic(err)
-	}
+	check(err)
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
+	check(err)
 	urlkey := string(body)
 	data := fmt.Sprintf("%s\n%s\n", codehash, urlkey)
 	ioutil.WriteFile(sourcePath, []byte(data), 0644)
@@ -165,12 +164,16 @@ func resetURLHashFile(codehash, code, sourcePath string) string {
 }
 
 func parseSegs(sourcePath string) ([]*Seg, string) {
-	var lines []string
+	var (
+		lines  []string
+		source []string
+	)
 	// Convert tabs to spaces for uniform rendering.
 	for _, line := range readLines(sourcePath) {
 		lines = append(lines, strings.Replace(line, "\t", "    ", -1))
+		source = append(source, line)
 	}
-	filecontent := strings.Join(lines, "\n")
+	filecontent := strings.Join(source, "\n")
 	segs := []*Seg{}
 	lastSeen := ""
 	for _, line := range lines {
@@ -223,6 +226,10 @@ func parseAndRenderSegs(sourcePath string) ([]*Seg, string) {
 		}
 		if seg.Code != "" {
 			seg.CodeRendered = cachedPygmentize(lexer, seg.Code)
+			// adding the content to the js code for copying to the clipboard
+			if strings.HasSuffix(sourcePath, ".go") {
+				seg.CodeForJs = strings.Trim(seg.Code, "\n") + "\n"
+			}
 		}
 	}
 	// we are only interested in the 'go' code to pass to play.golang.org
@@ -315,9 +322,11 @@ func main() {
 	ensureDir(siteDir)
 
 	copyFile("templates/site.css", siteDir+"/site.css")
+	copyFile("templates/site.js", siteDir+"/site.js")
 	copyFile("templates/favicon.ico", siteDir+"/favicon.ico")
 	copyFile("templates/404.html", siteDir+"/404.html")
 	copyFile("templates/play.png", siteDir+"/play.png")
+	copyFile("templates/clipboard.png", siteDir+"/clipboard.png")
 	examples := parseExamples()
 	renderIndex(examples)
 	renderExamples(examples)
